@@ -4,7 +4,7 @@ Show previous crashes from a hash seed.
 
 # Where?
 
-Here: https://AlainBardelas.github.io/stake-crash-history/index.html
+Here: https://alainbardelas.github.io/stake-crash-history/index.html
 
 # Exporting data
 
