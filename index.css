@@ -29,6 +29,12 @@ button:active {
 	background-color: #18aa18;
 }
 
+button:disabled {
+	background-color: #50616b;
+	color: #9aa6ad;
+	cursor: not-allowed;
+}
+
 .up-right {
 	display: flex;
 	flex-direction: column;
@@ -123,6 +129,17 @@ label {
 	width: 300px;
 	margin-top: 10px;
 	margin-bottom: 10px;
+}
+
+.export-actions {
+	display: flex;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.export-actions button {
+	font-size: 16px;
+	min-width: 150px;
 }
 
 #statistics {

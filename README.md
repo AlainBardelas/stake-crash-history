@@ -6,6 +6,10 @@ Show previous crashes from a hash seed.
 
 Here: https://edoanr.github.io/stake-crash-history/index.html
 
+# Exporting data
+
+After generating crashes, use **Download CSV** for spreadsheet/Pandas-style analysis or **Download JSON** for programmatic analysis. Each exported crash includes the row index, hash, numeric multiplier, win/loss flag based on the configured highlight value, seed, and block hash metadata.
+
 # Support me
 
 [![Ko-fi](https://i.imgur.com/4R7kMKs.png)](https://ko-fi.com/edoan)

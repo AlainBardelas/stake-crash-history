@@ -5,12 +5,15 @@ const seedInput = document.querySelector('#seed_input');
 const usBlockHashCheckbox = document.querySelector('#use_stake_us_block_hash');
 const updateButton = document.querySelector('#update_button');
 const crashesCount = document.querySelector('#crashes_count');
+const exportCsvButton = document.querySelector('#export_csv_button');
+const exportJsonButton = document.querySelector('#export_json_button');
 
 const blockHash = '0000000000000000001b34dc6a1e86083f95500b096231436e9b25cbdd0075c4';
 const usBlockHash = '000000000000000000066448f2f56069750fc40c718322766b6bdf63fdcf45b8';
 
 const amountInput = document.querySelector('#amount_input');
 const goodValueInput = document.querySelector('#good_value_input');
+let currentCrashHistory = null;
 
 // loading values.
 amountInput.value = localStorage.getItem('amount') ?? 100;
@@ -60,9 +63,23 @@ updateButton.addEventListener('click', (ev) => {
 	OnInputChange(true);
 });
 
+exportCsvButton.addEventListener('click', () => {
+	DownloadCsv();
+});
+
+exportJsonButton.addEventListener('click', () => {
+	DownloadJson();
+});
+
 function OnInputChange(byButton = false) {
+	clearTimeout(timeout);
+
 	if (!seedInput.value) {
 		loadingDiv.innerHTML = '';
+		resultsDiv.innerHTML = '';
+		statisticsDiv.classList.add('hide');
+		currentCrashHistory = null;
+		SetExportButtonsEnabled(false);
 		return;
 	}
 
@@ -73,7 +90,12 @@ function OnInputChange(byButton = false) {
 
 	HandleUpdateButtonVisibility(amount);
 
-	if (amount >= 5000 && !byButton) return;
+	if (amount >= 5000 && !byButton) {
+		loadingDiv.innerHTML = '';
+		currentCrashHistory = null;
+		SetExportButtonsEnabled(false);
+		return;
+	}
 
 	let goodValue = parseFloat(goodValueInput.value);
 	if (!goodValue && goodValue !== 0) goodValue = 2;
@@ -81,8 +103,9 @@ function OnInputChange(byButton = false) {
 	if (amount < 800) {
 		GetChain(seed, amount, goodValue);
 	} else {
-		clearTimeout(timeout);
 		loadingDiv.innerHTML = 'Loading...';
+		currentCrashHistory = null;
+		SetExportButtonsEnabled(false);
 		timeout = setTimeout(() => {
 			GetChain(seed, amount, goodValue);
 			loadingDiv.innerHTML = '';
@@ -95,10 +118,34 @@ function OnInputChange(byButton = false) {
 function GetChain(seed, amount = 1000, goodValue = 2) {
 	resultsDiv.innerHTML = '';
 
+	const history = BuildCrashHistory(seed, amount, goodValue);
+	currentCrashHistory = history;
+
+	let goodCount = 0;
+	let totalCount = history.crashes.length;
+
+	for (let crash of history.crashes) {
+		let multiplier = crash.multiplier;
+		const isGood = crash.isGood;
+		if (isGood) goodCount++;
+
+		const div = document.createElement('div');
+		div.textContent = multiplier.toFixed(2) + 'X';
+		div.className = `crash ${isGood ? 'bom' : 'ruim'}`;
+		resultsDiv.appendChild(div);
+	}
+
+	UpdateStatistics(totalCount, goodCount);
+	SetExportButtonsEnabled(totalCount > 0);
+}
+
+function BuildCrashHistory(seed, amount = 1000, goodValue = 2) {
 	let chain = [seed];
 	amount -= 1;
 
 	if (amount < 0) chain = [];
+	const selectedBlockHash = usBlockHashCheckbox.checked ? usBlockHash : blockHash;
+	const blockHashSource = usBlockHashCheckbox.checked ? 'stake.us' : 'stake.com';
 
 	for (let i = 0; i < amount; i++) {
 		chain.push(
@@ -111,7 +158,7 @@ function GetChain(seed, amount = 1000, goodValue = 2) {
 
 	const seedToPoint = (seed, i) => {
 		const hmac = CryptoJS.algo.HMAC.create(CryptoJS.algo.SHA256, seed);
-		hmac.update(usBlockHashCheckbox.checked ? usBlockHash : blockHash);
+		hmac.update(selectedBlockHash);
 
 		const hex = hmac.finalize().toString(CryptoJS.enc.Hex).substring(0, 8);
 		const dec = parseInt(hex, 16);
@@ -119,27 +166,25 @@ function GetChain(seed, amount = 1000, goodValue = 2) {
 
 		const point = parseFloat((Math.floor(f * 100) / 100).toFixed(2));
 
-		return point;
+		return {
+			index: i + 1,
+			hash: seed,
+			multiplier: point,
+			isGood: point >= goodValue,
+		};
 	};
 
-	chain = chain.map(seedToPoint);
-
-	let goodCount = 0;
-	let totalCount = chain.length;
-
-	for (let value of chain) {
-		let multiplier = value;
-
-		const isGood = multiplier >= goodValue;
-		if (isGood) goodCount++;
-
-		const div = document.createElement('div');
-		div.textContent = multiplier.toFixed(2) + 'X';
-		div.className = `crash ${isGood ? 'bom' : 'ruim'}`;
-		resultsDiv.appendChild(div);
-	}
-
-	UpdateStatistics(totalCount, goodCount);
+	return {
+		metadata: {
+			seed,
+			amount: chain.length,
+			goodValue,
+			blockHash: selectedBlockHash,
+			blockHashSource,
+			generatedAt: new Date().toISOString(),
+		},
+		crashes: chain.map(seedToPoint),
+	};
 }
 
 function UpdateStatistics(totalCount = 0, goodCount = 0) {
@@ -182,4 +227,74 @@ function HandleUpdateButtonVisibility(amount) {
 	} else {
 		updateButton.classList.add('hide');
 	}
+}
+
+function SetExportButtonsEnabled(enabled) {
+	exportCsvButton.disabled = !enabled;
+	exportJsonButton.disabled = !enabled;
+}
+
+function DownloadJson() {
+	if (!currentCrashHistory) return;
+
+	DownloadFile(
+		JSON.stringify(currentCrashHistory, null, 2),
+		'application/json',
+		GetExportFilename('json')
+	);
+}
+
+function DownloadCsv() {
+	if (!currentCrashHistory) return;
+
+	const { metadata, crashes } = currentCrashHistory;
+	const columns = [
+		'index',
+		'hash',
+		'multiplier',
+		'is_good',
+		'seed',
+		'good_value',
+		'block_hash_source',
+		'block_hash',
+	];
+
+	const rows = crashes.map((crash) => [
+		crash.index,
+		crash.hash,
+		crash.multiplier.toFixed(2),
+		crash.isGood,
+		metadata.seed,
+		metadata.goodValue,
+		metadata.blockHashSource,
+		metadata.blockHash,
+	]);
+
+	const csv = [columns, ...rows]
+		.map((row) => row.map(EncodeCsvValue).join(','))
+		.join('\n');
+
+	DownloadFile(csv, 'text/csv', GetExportFilename('csv'));
+}
+
+function EncodeCsvValue(value) {
+	const text = String(value);
+	return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function DownloadFile(content, type, filename) {
+	const blob = new Blob([content], { type });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = filename;
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
+	URL.revokeObjectURL(url);
+}
+
+function GetExportFilename(extension) {
+	const timestamp = currentCrashHistory.metadata.generatedAt.replace(/[:.]/g, '-');
+	return `stake-crash-history-${timestamp}.${extension}`;
 }
